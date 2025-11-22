@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Smart Trash Bin</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* 기본 설정 */
+        body {
+            margin: 0; padding: 0;
+            font-family: 'Apple SD Gothic Neo', 'Pretendard', sans-serif;
+            background-color: #f0f0f0;
+            display: flex; justify-content: center; align-items: center;
+            height: 100vh; overflow: hidden;
+        }
+
+        .phone-screen {
+            width: 375px; height: 812px;
+            background-color: white;
+            position: relative; overflow: hidden;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+            border-radius: 40px;
+        }
+
+        /* 헤더 */
+        header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 15px 20px; padding-top: 50px;
+            background: #F2F2F2; 
+            z-index: 20; position: absolute; top: 0; width: calc(100% - 40px);
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        /* 헤더 타이틀 (배경 없음) */
+        .header-title { 
+            font-weight: 700; font-size: 16px; display: flex; align-items: center;
+            color: #333; 
+        }
+
+        header i { font-size: 20px; color: #555; cursor: pointer; transition: color 0.2s; }
+        header i:hover { color: #00C851; }
+
+        /* 초대형 지도 영역 */
+        #draggable-map {
+            width: 1600px; height: 1800px;
+            position: absolute;
+            top: -600px; left: -600px;
+            background-color: #e0e0e0;
+            background-image: url('이미지.png'); 
+            background-size: cover; background-position: center;
+            cursor: grab;
+        }
+        #draggable-map:active { cursor: grabbing; }
+
+        /* 마커 디자인 */
+        .marker {
+            width: 44px; height: 44px; border-radius: 50%;
+            display: flex; justify-content: center; align-items: center;
+            color: white; position: absolute;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            cursor: pointer; transition: transform 0.1s; font-size: 20px;
+        }
+        .marker:active { transform: scale(0.9); }
+        
+        /* 색상 클래스 */
+        .green { background-color: #00C851; border: 2px solid white; } /* 여유 */
+        .blue { background-color: #2F80ED; border: 2px solid white; }  /* 보통 */
+        .red { background-color: #EB5757; border: 2px solid white; }    /* 가득 참 */
+
+        /* 내 위치 */
+        .my-location {
+            position: absolute; top: 48%; left: 46%; 
+            width: 20px; height: 20px; background: white; 
+            border-radius: 50%; display: flex; justify-content: center; align-items: center; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3); z-index: 5;
+        }
+        .my-location::after { content: ''; width: 12px; height: 12px; background: #2F80ED; border-radius: 50%; }
+        .pulse { position: absolute; width: 100%; height: 100%; background: rgba(47, 128, 237, 0.4); border-radius: 50%; animation: pulse-animation 2s infinite; }
+        @keyframes pulse-animation { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(3); opacity: 0; } }
+
+        /* 하단 UI */
+        .bottom-scan-btn {
+            position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
+            width: 60px; height: 60px; background-color: #00C851;
+            border-radius: 50%; display: flex; justify-content: center; align-items: center;
+            color: white; font-size: 28px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            cursor: pointer; z-index: 10;
+        }
+
+        /* 카드 스타일 */
+        .modal-card {
+            display: none; position: absolute; bottom: 100px; left: 20px; right: 20px;
+            background: white; padding: 20px; border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15); z-index: 50; animation: slideUp 0.3s ease-out;
+        }
+        @keyframes slideUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+        .card-header { display: flex; justify-content: space-between; margin-bottom: 20px; }
+        .card-info-group { display: flex; gap: 15px; align-items: center; }
+        .icon-circle { width: 50px; height: 50px; background-color: #E3F2FD; border-radius: 50%; display: flex; justify-content: center; align-items: center; color: #2F80ED; font-size: 20px; }
+        .bin-title { font-size: 18px; font-weight: 800; color: #333; margin-bottom: 4px; }
+        .bin-dist { font-size: 14px; color: #666; display: flex; align-items: center; }
+        .close-btn { color: #999; font-size: 18px; cursor: pointer; padding: 5px; }
+        .progress-container { margin-bottom: 20px; }
+        .progress-labels { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px; font-weight: 600; }
+        .progress-bg { width: 100%; height: 8px; background-color: #E0E0E0; border-radius: 10px; overflow: hidden; }
+        .progress-fill { height: 100%; background-color: #2F80ED; border-radius: 10px; width: 0%; transition: width 0.5s; }
+        .card-action-btn { width: 100%; padding: 15px; background-color: #00C851; color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: bold; cursor: pointer; display: flex; justify-content: center; align-items: center; gap: 8px; }
+        
+        /* 범례 스타일 */
+        .legend-container { position: absolute; bottom: 40px; left: 25px; background: white; padding: 10px 15px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); z-index: 9; }
+        .legend-item { display: flex; align-items: center; margin-bottom: 6px; font-size: 11px; font-weight: 600; color: #555; }
+        .legend-item:last-child { margin-bottom: 0; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+
+        .camera-overlay { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: black; color: white; z-index: 200; flex-direction: column; justify-content: center; align-items: center; }
+        .scan-box { width: 200px; height: 200px; border: 3px solid #00C851; border-radius: 20px; margin-bottom: 20px; }
+
+        /* 사이드 메뉴 스타일 */
+        .menu-backdrop {
+            display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5); z-index: 90; opacity: 0; transition: opacity 0.3s;
+        }
+        .side-panel {
+            position: absolute; top: 0; 
+            width: 260px; height: 100%;
+            background: white; z-index: 100;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+            transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            display: flex; flex-direction: column; overflow: hidden;
+        }
+        #leftMenu { left: 0; transform: translateX(-100%); border-top-right-radius: 20px; border-bottom-right-radius: 20px; }
+        #rightProfile { right: 0; transform: translateX(100%); border-top-left-radius: 20px; border-bottom-left-radius: 20px; }
+        .side-panel.open { transform: translateX(0) !important; }
+
+        .menu-header { padding: 40px 25px 20px 25px; font-size: 24px; font-weight: 800; color: #333; background-color: #f9f9f9; border-bottom: 1px solid #eee; }
+        .menu-list { list-style: none; padding: 0; margin: 0; flex-grow: 1; overflow-y: auto; }
+        .menu-item { padding: 18px 25px; border-bottom: 1px solid #f5f5f5; font-size: 16px; color: #444; font-weight: 500; display: flex; align-items: center; cursor: pointer; }
+        .menu-item:active { background-color: #f0f0f0; }
+        .menu-item i { margin-right: 15px; color: #aaa; width: 20px; text-align: center; }
+        .menu-item:hover i { color: #00C851; }
+        .menu-footer { padding: 25px; background-color: #fcfcfc; border-top: 1px solid #eee; text-align: center; }
+        .footer-label { font-size: 12px; color: #888; margin-bottom: 5px; font-weight: 600; }
+        .footer-phone { font-size: 18px; color: #333; font-weight: 700; }
+        .footer-btn { margin-top: 10px; display: inline-block; padding: 8px 15px; background-color: #eee; border-radius: 20px; font-size: 11px; color: #555; font-weight: bold; }
+
+        .profile-header { padding: 40px 25px 30px 25px; background: #f9f9f9; display: flex; flex-direction: column; align-items: center; border-bottom: 1px solid #eee; }
+        .profile-img { width: 80px; height: 80px; border-radius: 50%; background: #e0e0e0; margin-bottom: 15px; display: flex; justify-content: center; align-items: center; color: white; font-size: 40px; }
+        .profile-name { font-size: 20px; font-weight: 700; color: #333; margin-bottom: 5px; }
+        .profile-point { font-size: 14px; color: #00C851; font-weight: 600; background: #E8F5E9; padding: 5px 12px; border-radius: 15px; }
+
+    </style>
+</head>
+<body>
+
+    <div class="phone-screen">
+        <header>
+            <i class="fas fa-bars" onclick="toggleMenu('left')"></i>
+            <div class="header-title">로고 넣을 예정</div>
+            <i class="far fa-user" onclick="toggleMenu('right')"></i>
+        </header>
+
+        <div id="backdrop" class="menu-backdrop" onclick="closeAllMenus()"></div>
+        
+        <div id="leftMenu" class="side-panel">
+            <div class="menu-header">메뉴</div>
+            <ul class="menu-list">
+                <li class="menu-item" onclick="alert('이용내역으로 이동')"><i class="fas fa-history"></i> 이용내역</li>
+                <li class="menu-item" onclick="alert('설정으로 이동')"><i class="fas fa-cog"></i> 설정</li>
+                <li class="menu-item" onclick="alert('사용방법으로 이동')"><i class="fas fa-question-circle"></i> 사용방법</li>
+            </ul>
+            <div class="menu-footer">
+                <div class="footer-label">고객센터</div>
+                <div class="footer-phone">0000-0000</div>
+                <div class="footer-btn">1:1 문의하기</div>
+            </div>
+        </div>
+
+        <div id="rightProfile" class="side-panel">
+            <div class="profile-header">
+                <div class="profile-img"><i class="fas fa-user"></i></div>
+                <div class="profile-name">김준성 님</div>
+                <div class="profile-point">내 포인트: 750 P</div>
+            </div>
+            <ul class="menu-list">
+                <li class="menu-item"><i class="fas fa-bell"></i> 알림함</li>
+                <li class="menu-item"><i class="fas fa-star"></i> 즐겨찾기</li>
+                <li class="menu-item"><i class="fas fa-pen"></i> 정보 수정</li>
+            </ul>
+            <div class="menu-footer">
+                <div class="footer-btn" onclick="alert('로그아웃')" style="background:#ffebee; color:#d32f2f;">로그아웃</div>
+            </div>
+        </div>
+
+        <div id="draggable-map">
+            <div class="marker green" style="top: 42%; left: 42%;" onclick="openCard('동진아파트 입구', '80m', 25)"><i class="fas fa-trash-alt"></i></div>
+            <div class="marker blue" style="top: 44%; left: 47%;" onclick="openCard('협진아파트 앞', '50m', 45)"><i class="fas fa-trash-alt"></i></div>
+            <div class="marker green" style="top: 50%; left: 50%;" onclick="openCard('리치파크 정문', '30m', 10)"><i class="fas fa-trash-alt"></i></div>
+            <div class="marker red" style="top: 56%; left: 45%;" onclick="openCard('경진초등학교 앞', '150m', 95)"><i class="fas fa-trash-alt"></i></div>
+            <div class="marker blue" style="top: 54%; left: 38%;" onclick="openCard('봉구하우스 옆', '200m', 60)"><i class="fas fa-trash-alt"></i></div>
+            <div class="marker red" style="top: 35%; left: 52%;" onclick="openCard('복현아이파크', '300m', 100)"><i class="fas fa-trash-alt"></i></div>
+
+            <div class="marker blue" style="top: 20%; left: 25%;" onclick="openCard('로데오 안쪽 원룸', '250m', 55)"><i class="fas fa-trash-alt"></i></div>
+            <div class="marker green" style="top: 25%; left: 20%;" onclick="openCard('편의점 뒤 골목', '300m', 15)"><i class="fas fa-trash-alt"></i></div>
+            <div class="marker red" style="top: 15%; left: 30%;" onclick="openCard('고시텔 앞', '350m', 85)"><i class="fas fa-trash-alt"></i></div>
+
+            <div class="marker green" style="top: 25%; left: 75%;" onclick="openCard('영진전문대 후문', '400m', 30)"><i class="fas fa-trash-alt"></i></div>
+            <div class="marker blue" style="top: 30%; left: 80%;" onclick="openCard('원룸촌 입구', '450m', 65)"><i class="fas fa-trash-alt"></i></div>
+            <div class="marker red" style="top: 20%; left: 85%;" onclick="openCard('공원 옆 골목', '500m', 90)"><i class="fas fa-trash-alt"></i></div>
+
+            <div class="marker blue" style="top: 38%; left: 35%;" onclick="openCard('동진빌라 앞', '150m', 70)"><i class="fas fa-trash-alt"></i></div>
+            <div class="marker green" style="top: 48%; left: 32%;" onclick="openCard('주택가 골목', '200m', 20)"><i class="fas fa-trash-alt"></i></div>
+
+            <div class="marker red" style="top: 65%; left: 40%;" onclick="openCard('경진초교 뒤', '250m', 98)"><i class="fas fa-trash-alt"></i></div>
+            <div class="marker blue" style="top: 70%; left: 50%;" onclick="openCard('남쪽 원룸촌', '300m', 50)"><i class="fas fa-trash-alt"></i></div>
+
+            <div class="marker green" style="top: 60%; left: 70%;" onclick="openCard('복현시장 안쪽', '400m', 35)"><i class="fas fa-trash-alt"></i></div>
+            <div class="marker blue" style="top: 75%; left: 85%;" onclick="openCard('신암공원 주택가', '550m', 75)"><i class="fas fa-trash-alt"></i></div>
+
+            <div class="my-location"><div class="pulse"></div></div>
+        </div>
+
+        <div class="legend-container">
+            <div class="legend-item"><div class="dot" style="background:#00C851"></div>여유 (초록)</div>
+            <div class="legend-item"><div class="dot" style="background:#2F80ED"></div>보통 (파랑)</div>
+            <div class="legend-item"><div class="dot" style="background:#EB5757"></div>가득참 (빨강)</div>
+        </div>
+
+        <div id="mainScanBtn" class="bottom-scan-btn" onclick="openCamera()">
+            <i class="fas fa-qrcode"></i>
+        </div>
+
+        <div id="detailCard" class="modal-card">
+            <div class="card-header">
+                <div class="card-info-group">
+                    <div class="icon-circle" id="cardIconBg"><i class="fas fa-trash-alt" id="cardIcon"></i></div>
+                    <div>
+                        <div id="cardTitle" class="bin-title">쓰레기통</div>
+                        <div id="cardDist" class="bin-dist">거리</div>
+                    </div>
+                </div>
+                <i class="fas fa-times close-btn" onclick="closeCard()"></i>
+            </div>
+            <div class="progress-container">
+                <div class="progress-labels">
+                    <span style="color:#888">현재 용량</span>
+                    <span id="cardPercent" style="color:#2F80ED; font-weight:bold;">0%</span>
+                </div>
+                <div class="progress-bg">
+                    <div id="cardBar" class="progress-fill" style="width: 0%;"></div>
+                </div>
+            </div>
+            <button class="card-action-btn" id="cardActionBtn" onclick="openCamera()">
+                <i class="fas fa-qrcode"></i> 스캔하기
+            </button>
+        </div>
+
+        <div id="cameraScreen" class="camera-overlay" onclick="closeCamera()">
+            <div class="scan-box"></div>
+            <p style="font-weight: bold; font-size: 18px;">QR 스캔 중...</p>
+        </div>
+    </div>
+
+    <script>
+        const map = document.getElementById('draggable-map');
+        let isDragging = false;
+        let startX, startY, initialLeft, initialTop;
+        map.addEventListener('mousedown', startDrag);
+        map.addEventListener('touchstart', startDrag, {passive: false});
+        window.addEventListener('mousemove', drag);
+        window.addEventListener('touchmove', drag, {passive: false});
+        window.addEventListener('mouseup', stopDrag);
+        window.addEventListener('touchend', stopDrag);
+
+        function startDrag(e) {
+            if(e.target.closest('.marker') || e.target.closest('.modal-card')) return;
+            isDragging = true;
+            startX = (e.pageX || e.touches[0].pageX);
+            startY = (e.pageY || e.touches[0].pageY);
+            const style = window.getComputedStyle(map);
+            initialLeft = parseInt(style.left || 0);
+            initialTop = parseInt(style.top || 0);
+            map.style.cursor = 'grabbing';
+        }
+        function drag(e) {
+            if (!isDragging) return;
+            e.preventDefault();
+            const x = (e.pageX || e.touches[0].pageX);
+            const y = (e.pageY || e.touches[0].pageY);
+            map.style.left = `${initialLeft + (x - startX)}px`;
+            map.style.top = `${initialTop + (y - startY)}px`;
+        }
+        function stopDrag() { isDragging = false; map.style.cursor = 'grab'; }
+
+        function openCard(title, dist, percent) {
+            const card = document.getElementById('detailCard');
+            const mainBtn = document.getElementById('mainScanBtn');
+            document.getElementById('cardTitle').innerText = title;
+            document.getElementById('cardDist').innerHTML = `<i class="fas fa-location-arrow"></i> ${dist} 거리`;
+            document.getElementById('cardPercent').innerText = percent + "%";
+            const bar = document.getElementById('cardBar');
+            bar.style.width = percent + "%";
+
+            let colorCode, bgColorCode;
+            if (percent < 40) { colorCode = "#00C851"; bgColorCode = "#E8F5E9"; } 
+            else if (percent < 80) { colorCode = "#2F80ED"; bgColorCode = "#E3F2FD"; } 
+            else { colorCode = "#EB5757"; bgColorCode = "#FFEBEE"; }
+
+            bar.style.backgroundColor = colorCode;
+            document.getElementById('cardPercent').style.color = colorCode;
+            document.getElementById('cardIcon').style.color = colorCode;
+            document.getElementById('cardIconBg').style.backgroundColor = bgColorCode;
+            
+            const btn = document.getElementById('cardActionBtn');
+            if(percent >= 80) {
+                btn.style.backgroundColor = "#999";
+                btn.innerHTML = "<i class='fas fa-ban'></i> 사용 불가";
+                btn.onclick = null;
+            } else {
+                btn.style.backgroundColor = "#00C851";
+                btn.innerHTML = "<i class='fas fa-qrcode'></i> 스캔하기";
+                btn.onclick = openCamera;
+            }
+            card.style.display = 'block';
+            mainBtn.style.display = 'none';
+        }
+
+        function closeCard() {
+            document.getElementById('detailCard').style.display = 'none';
+            document.getElementById('mainScanBtn').style.display = 'flex';
+        }
+        function openCamera() {
+            document.getElementById('cameraScreen').style.display = 'flex';
+            setTimeout(() => {
+                if(document.getElementById('cameraScreen').style.display === 'flex') {
+                    alert("✅ 스캔 완료!");
+                    closeCamera();
+                }
+            }, 1500);
+        }
+        function closeCamera() { document.getElementById('cameraScreen').style.display = 'none'; }
+
+        function toggleMenu(side) {
+            const backdrop = document.getElementById('backdrop');
+            if (side === 'left') document.getElementById('leftMenu').classList.add('open');
+            else if (side === 'right') document.getElementById('rightProfile').classList.add('open');
+            backdrop.style.display = 'block';
+            setTimeout(() => backdrop.style.opacity = '1', 10);
+        }
+        function closeAllMenus() {
+            document.getElementById('leftMenu').classList.remove('open');
+            document.getElementById('rightProfile').classList.remove('open');
+            const backdrop = document.getElementById('backdrop');
+            backdrop.style.opacity = '0';
+            setTimeout(() => { backdrop.style.display = 'none'; }, 300);
+        }
+    </script>
+</body>
+</html>
